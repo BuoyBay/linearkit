@@ -1,0 +1,497 @@
+Private Sub Finite(value As Double)
+    If Not (value <= 1.7976931348623157e308 And value >= -1.7976931348623157e308) Then Throw New InvalidArgumentException("LinearKit requires finite values and computeds")
+End Sub
+
+Private Function Magnitude(values As Array Of Double) As Double
+    Dim scale As Double = 0.0
+    For Each v As Double In values
+        scale = Math.Max(scale, Math.Abs(v))
+    Next
+    Return scale
+End Function
+
+Private Function StableDot(a As Array Of Double, b As Array Of Double) As Double
+    Dim direct As Double = 0.0
+    Dim errorTerm As Double = 0.0
+    Dim safe As Boolean = True
+    For i As Integer = 0 To Array.Count(a) - 1
+        Dim product As Double = a(i) * b(i)
+        Dim updated As Double = direct + product
+        If Not (Math.Abs(product) <= 1.7976931348623157e308 And Math.Abs(updated) <= 1.7976931348623157e308) Then
+            safe = False
+            Exit For
+        End If
+        If Math.Abs(direct) >= Math.Abs(product) Then
+            errorTerm += (direct - updated) + product
+        Else
+            errorTerm += (product - updated) + direct
+        End If
+        direct = updated
+    Next
+    Dim directValue As Double = direct + errorTerm
+    If safe And Math.Abs(directValue) <= 1.7976931348623157e308 Then Return directValue
+    Dim sa As Double = Magnitude(a)
+    Dim sb As Double = Magnitude(b)
+    If sa = 0.0 Or sb = 0.0 Then Return 0.0
+    Dim total As Double = 0.0
+    Dim correction As Double = 0.0
+    For i As Integer = 0 To Array.Count(a) - 1
+        Dim term As Double = (a(i) / sa) * (b(i) / sb)
+        Dim nextTotal As Double = total + term
+        If Math.Abs(total) >= Math.Abs(term) Then
+            correction += (total - nextTotal) + term
+        Else
+            correction += (term - nextTotal) + total
+        End If
+        total = nextTotal
+    Next
+    Dim computed As Double = total + correction
+    If computed = 0.0 Then Return 0.0
+    Dim exponent As Integer = 0
+    While sa >= 2.0
+        sa *= 0.5
+        exponent += 1
+    End While
+    While sa < 1.0
+        sa *= 2.0
+        exponent -= 1
+    End While
+    While sb >= 2.0
+        sb *= 0.5
+        exponent += 1
+    End While
+    While sb < 1.0
+        sb *= 2.0
+        exponent -= 1
+    End While
+    computed *= sa * sb
+    While Math.Abs(computed) >= 2.0
+        computed *= 0.5
+        exponent += 1
+    End While
+    While Math.Abs(computed) < 1.0
+        computed *= 2.0
+        exponent -= 1
+    End While
+    While exponent > 0
+        computed *= 2.0
+        exponent -= 1
+        Finite(computed)
+    End While
+    While exponent < 0
+        computed *= 0.5
+        exponent += 1
+    End While
+    Finite(computed)
+    Return computed
+End Function
+
+''' Immutable finite vector of 1..4096 components; copies input and output arrays.
+Public Class Vector
+    Private Property items As Array Of Double
+    Public Property Count As Integer
+        Get
+            Return Array.Count(items)
+        End Get
+    End Property
+    Public Sub Constructor(values As Array Of Double)
+        If Array.Count(values) < 1 Or Array.Count(values) > 4096 Then Throw New InvalidArgumentException("Vector length must be 1..4096")
+        For Each v As Double In values
+            Finite(v)
+        Next
+        items = Array.Clone(values)
+    End Sub
+    Public Function At(index As Integer) As Double
+        If index < 0 Or index >= Count Then Throw New InvalidArgumentException("Vector index out of range")
+        Return items(index)
+    End Function
+    Public Function ToArray() As Array Of Double
+        Return Array.Clone(items)
+    End Function
+    Private Sub Compatible(other As Vector)
+        If other Is Nil Then Throw New InvalidArgumentException("Nil vector")
+        If Count <> other.Count Then Throw New InvalidArgumentException("Vector dimensions differ")
+    End Sub
+    Public Function Add(other As Vector) As Vector
+        Compatible(other)
+        Dim values As Array Of Double = ToArray()
+        For i As Integer = 0 To Count - 1
+            values(i) += other.At(i)
+        Next
+        Return New Vector(values)
+    End Function
+    Public Function Subtract(other As Vector) As Vector
+        Compatible(other)
+        Dim values As Array Of Double = ToArray()
+        For i As Integer = 0 To Count - 1
+            values(i) -= other.At(i)
+        Next
+        Return New Vector(values)
+    End Function
+    Public Function Scale(factor As Double) As Vector
+        Finite(factor)
+        Dim values As Array Of Double = ToArray()
+        For i As Integer = 0 To Count - 1
+            values(i) *= factor
+        Next
+        Return New Vector(values)
+    End Function
+    Public Function Dot(other As Vector) As Double
+        Compatible(other)
+        Return StableDot(items, other.ToArray())
+    End Function
+    Public Function Norm() As Double
+        Dim s As Double = Magnitude(items)
+        If s = 0.0 Then Return 0.0
+        Dim sum As Double = 0.0
+        For Each v As Double In items
+            sum += (v / s) * (v / s)
+        Next
+        Dim computed As Double = s * Math.Sqrt(sum)
+        Finite(computed)
+        Return computed
+    End Function
+    Public Function Normalize() As Vector
+        Dim s As Double = Magnitude(items)
+        If s = 0.0 Then Throw New InvalidArgumentException("Cannot normalize zero")
+        Dim values As Array Of Double = ToArray()
+        For i As Integer = 0 To Count - 1
+            values(i) /= s
+        Next
+        Dim unitScale As New Vector(values)
+        Dim length As Double = unitScale.Norm()
+        For i As Integer = 0 To Count - 1
+            values(i) /= length
+        Next
+        Return New Vector(values)
+    End Function
+    Public Function Cross(other As Vector) As Vector
+        Compatible(other)
+        If Count <> 3 Then Throw New InvalidArgumentException("Cross requires three components")
+        Dim values() As Double
+        For i As Integer = 0 To 2
+            Dim j As Integer = (i + 1) Mod 3
+            Dim k As Integer = (i + 2) Mod 3
+            Dim left() As Double = [items(j), -items(k)]
+            Dim right() As Double = [other.At(k), other.At(j)]
+            Array.Append(values, StableDot(left, right))
+        Next
+        Return New Vector(values)
+    End Function
+End Class
+
+''' Row-major immutable finite matrix. Dimensions 1..4096, at most 65536 elements.
+Public Class DenseMatrix
+    Private Property data As Array Of Double
+    Private Property rowCount As Integer
+    Private Property columnCount As Integer
+    Public Property Rows As Integer
+        Get
+            Return rowCount
+        End Get
+    End Property
+    Public Property Columns As Integer
+        Get
+            Return columnCount
+        End Get
+    End Property
+    Public Sub Constructor(rows As Integer, columns As Integer, values As Array Of Double)
+        If rows < 1 Or columns < 1 Or rows > 4096 Or columns > 4096 Then Throw New InvalidArgumentException("Matrix dimensions must be 1..4096")
+        If rows > 65536 \ columns Then Throw New InvalidArgumentException("Matrix element cap is 65536")
+        If Array.Count(values) <> rows * columns Then Throw New InvalidArgumentException("Row-major data length mismatch")
+        For Each v As Double In values
+            Finite(v)
+        Next
+        rowCount = rows
+        columnCount = columns
+        data = Array.Clone(values)
+    End Sub
+    Public Function At(row As Integer, column As Integer) As Double
+        If row < 0 Or row >= Rows Or column < 0 Or column >= Columns Then Throw New InvalidArgumentException("Matrix index out of range")
+        Return data(row * Columns + column)
+    End Function
+    Public Function ToArray() As Array Of Double
+        Return Array.Clone(data)
+    End Function
+    Private Sub Compatible(other As DenseMatrix)
+        If other Is Nil Then Throw New InvalidArgumentException("Nil matrix")
+        If Rows <> other.Rows Or Columns <> other.Columns Then Throw New InvalidArgumentException("Matrix dimensions differ")
+    End Sub
+    Public Function Add(other As DenseMatrix) As DenseMatrix
+        Compatible(other)
+        Dim values As Array Of Double = ToArray()
+        For i As Integer = 0 To Rows * Columns - 1
+            values(i) += other.data(i)
+        Next
+        Return New DenseMatrix(Rows, Columns, values)
+    End Function
+    Public Function Subtract(other As DenseMatrix) As DenseMatrix
+        Compatible(other)
+        Dim values As Array Of Double = ToArray()
+        For i As Integer = 0 To Rows * Columns - 1
+            values(i) -= other.data(i)
+        Next
+        Return New DenseMatrix(Rows, Columns, values)
+    End Function
+    Public Function Scale(factor As Double) As DenseMatrix
+        Finite(factor)
+        Dim values As Array Of Double = ToArray()
+        For i As Integer = 0 To Rows * Columns - 1
+            values(i) *= factor
+        Next
+        Return New DenseMatrix(Rows, Columns, values)
+    End Function
+    Public Function Transpose() As DenseMatrix
+        Dim values(Rows * Columns) As Double
+        For r As Integer = 0 To Rows - 1
+            For c As Integer = 0 To Columns - 1
+                values(c * Rows + r) = At(r, c)
+            Next
+        Next
+        Return New DenseMatrix(Columns, Rows, values)
+    End Function
+    Public Function Multiply(other As DenseMatrix) As DenseMatrix
+        If other Is Nil Then Throw New InvalidArgumentException("Nil matrix")
+        If Columns <> other.Rows Then Throw New InvalidArgumentException("Matrix product dimensions differ")
+        If Rows > 65536 \ other.Columns Then Throw New InvalidArgumentException("Product exceeds element cap")
+        Dim values(Rows * other.Columns) As Double
+        Dim left(Columns) As Double
+        Dim right(Columns) As Double
+        For r As Integer = 0 To Rows - 1
+            For c As Integer = 0 To other.Columns - 1
+                For k As Integer = 0 To Columns - 1
+                    left(k) = At(r, k)
+                    right(k) = other.At(k, c)
+                Next
+                values(r * other.Columns + c) = StableDot(left, right)
+            Next
+        Next
+        Return New DenseMatrix(Rows, other.Columns, values)
+    End Function
+    Public Function MultiplyVector(other As Vector) As Vector
+        If other Is Nil Then Throw New InvalidArgumentException("Nil vector")
+        If Columns <> other.Count Then Throw New InvalidArgumentException("Matrix-vector dimensions differ")
+        Dim values(Rows) As Double
+        Dim row(Columns) As Double
+        For r As Integer = 0 To Rows - 1
+            For c As Integer = 0 To Columns - 1
+                row(c) = At(r, c)
+            Next
+            values(r) = StableDot(row, other.ToArray())
+        Next
+        Return New Vector(values)
+    End Function
+End Class
+
+''' Status is Success, Singular or RankDeficient. Failure has Nil Solution and residual -1.
+Public Class LinearSolveResult
+    Private Property state As String
+    Private Property answer As Vector
+    Private Property residual As Double
+    Public Property Status As String
+        Get
+            Return state
+        End Get
+    End Property
+    Public Property Solution As Vector
+        Get
+            Return answer
+        End Get
+    End Property
+    Public Property ScaledResidual As Double
+        Get
+            Return residual
+        End Get
+    End Property
+    Public Sub Constructor(status As String, solution As Vector, scaledResidual As Double)
+        state = status
+        answer = solution
+        residual = scaledResidual
+    End Sub
+End Class
+
+Private Sub SolveInputs(a As DenseMatrix, b As Vector, tolerance As Double)
+    If a Is Nil Or b Is Nil Then Throw New InvalidArgumentException("Nil solve operand")
+    Finite(tolerance)
+    If tolerance <= 0.0 Or tolerance >= 1.0 Then Throw New InvalidArgumentException("Tolerance must be strictly between zero and one")
+    If a.Rows <> b.Count Or a.Columns > 256 Then Throw New InvalidArgumentException("Solve dimensions mismatch or more than 256 unknowns")
+End Sub
+
+Private Function ResultFor(a As DenseMatrix, b As Vector, x As Array Of Double) As LinearSolveResult
+    Dim solution As New Vector(x)
+    Dim aScale As Double = Magnitude(a.ToArray())
+    Dim xScale As Double = Magnitude(x)
+    Dim bScale As Double = Magnitude(b.ToArray())
+    ' Separate binary exponents preserve the relative sizes of A*x and b
+    ' without forming their possibly overflowing or underflowing product.
+    Dim mantissas() As Double = [aScale, xScale, bScale]
+    Dim exponents(3) As Integer
+    For i As Integer = 0 To 2
+        If mantissas(i) > 0.0 Then
+            While mantissas(i) >= 2.0
+                mantissas(i) *= 0.5
+                exponents(i) += 1
+            End While
+            While mantissas(i) < 1.0
+                mantissas(i) *= 2.0
+                exponents(i) -= 1
+            End While
+        End If
+    Next
+    Dim axWeight As Double = mantissas(0) * mantissas(1)
+    Dim bWeight As Double = mantissas(2)
+    Dim axExponent As Integer = exponents(0) + exponents(1)
+    Dim commonExponent As Integer = axExponent
+    If axWeight = 0.0 Or (bWeight > 0.0 And exponents(2) > commonExponent) Then commonExponent = exponents(2)
+    If axWeight > 0.0 Then
+        For i As Integer = axExponent To commonExponent - 1
+            axWeight *= 0.5
+        Next
+    End If
+    If bWeight > 0.0 Then
+        For i As Integer = exponents(2) To commonExponent - 1
+            bWeight *= 0.5
+        Next
+    End If
+    Dim anorm As Double = 0.0
+    Dim rnorm As Double = 0.0
+    For r As Integer = 0 To a.Rows - 1
+        Dim total As Double = 0.0
+        Dim rowNorm As Double = 0.0
+        If aScale > 0.0 And xScale > 0.0 Then
+            For c As Integer = 0 To a.Columns - 1
+                Dim v As Double = a.At(r, c) / aScale
+                rowNorm += Math.Abs(v)
+                total += v * (x(c) / xScale)
+            Next
+        End If
+        Dim bv As Double = 0.0
+        If bScale > 0.0 Then bv = (b.At(r) / bScale) * bWeight
+        anorm = Math.Max(anorm, rowNorm)
+        rnorm = Math.Max(rnorm, Math.Abs(total * axWeight - bv))
+    Next
+    Dim denominator As Double = anorm * axWeight + bWeight
+    Dim residual As Double = 0.0
+    If denominator > 0.0 Then residual = rnorm / denominator
+    Return New LinearSolveResult("Success", solution, residual)
+End Function
+
+''' LU elimination with partial row pivoting; rejects pivots <= tolerance * max(abs(A)).
+Public Function Solve(a As DenseMatrix, b As Vector, tolerance As Double = 0.000000000001) As LinearSolveResult
+    SolveInputs(a, b, tolerance)
+    If a.Rows <> a.Columns Then Throw New InvalidArgumentException("Solve requires a square matrix")
+    Dim n As Integer = a.Columns
+    Dim lu As Array Of Double = a.ToArray()
+    Dim y As Array Of Double = b.ToArray()
+    Dim scale As Double = Math.Max(Magnitude(lu), Magnitude(y))
+    Dim matrixScale As Double = Magnitude(lu)
+    If matrixScale = 0.0 Then Return New LinearSolveResult("Singular", Nil, -1.0)
+    Dim rankScale As Double = matrixScale / scale
+    For i As Integer = 0 To n * n - 1
+        lu(i) /= scale
+    Next
+    For i As Integer = 0 To n - 1
+        y(i) /= scale
+    Next
+    For k As Integer = 0 To n - 1
+        Dim pivot As Integer = k
+        For r As Integer = k + 1 To n - 1
+            If Math.Abs(lu(r * n + k)) > Math.Abs(lu(pivot * n + k)) Then pivot = r
+        Next
+        If Math.Abs(lu(pivot * n + k)) = 0.0 Or Math.Abs(lu(pivot * n + k)) / rankScale <= tolerance Then Return New LinearSolveResult("Singular", Nil, -1.0)
+        For c As Integer = 0 To n - 1
+            Dim swap As Double = lu(k * n + c)
+            lu(k * n + c) = lu(pivot * n + c)
+            lu(pivot * n + c) = swap
+        Next
+        Dim swapY As Double = y(k)
+        y(k) = y(pivot)
+        y(pivot) = swapY
+        For r As Integer = k + 1 To n - 1
+            Dim factor As Double = lu(r * n + k) / lu(k * n + k)
+            lu(r * n + k) = factor
+            For c As Integer = k + 1 To n - 1
+                lu(r * n + c) -= factor * lu(k * n + c)
+                Finite(lu(r * n + c))
+            Next
+            y(r) -= factor * y(k)
+            Finite(y(r))
+        Next
+    Next
+    Dim x(n) As Double
+    For r As Integer = n - 1 To 0 Step -1
+        Dim value As Double = y(r)
+        For c As Integer = r + 1 To n - 1
+            value -= lu(r * n + c) * x(c)
+        Next
+        x(r) = value / lu(r * n + r)
+        Finite(x(r))
+    Next
+    Return ResultFor(a, b, x)
+End Function
+
+''' Unpivoted Householder QR; m >= n. Rejects R diagonals relative to max(abs(A)).
+Public Function LeastSquares(a As DenseMatrix, b As Vector, tolerance As Double = 0.000000000001) As LinearSolveResult
+    SolveInputs(a, b, tolerance)
+    If a.Rows < a.Columns Then Throw New InvalidArgumentException("LeastSquares requires rows >= columns")
+    Dim m As Integer = a.Rows
+    Dim n As Integer = a.Columns
+    Dim qr As Array Of Double = a.ToArray()
+    Dim y As Array Of Double = b.ToArray()
+    Dim matrixScale As Double = Magnitude(qr)
+    If matrixScale = 0.0 Then Return New LinearSolveResult("RankDeficient", Nil, -1.0)
+    Dim scale As Double = Math.Max(matrixScale, Magnitude(y))
+    Dim rankScale As Double = matrixScale / scale
+    For i As Integer = 0 To m * n - 1
+        qr(i) /= scale
+    Next
+    For i As Integer = 0 To m - 1
+        y(i) /= scale
+    Next
+    For k As Integer = 0 To n - 1
+        Dim v(m - k) As Double
+        For r As Integer = k To m - 1
+            v(r - k) = qr(r * n + k)
+        Next
+        Dim column As New Vector(v)
+        Dim length As Double = column.Norm()
+        If length = 0.0 Or length / rankScale <= tolerance Then Return New LinearSolveResult("RankDeficient", Nil, -1.0)
+        Dim sign As Double = 1.0
+        If v(0) < 0.0 Then sign = -1.0
+        For i As Integer = 0 To m - k - 1
+            v(i) /= length
+        Next
+        v(0) += sign
+        Dim tau As Double = 2.0 / StableDot(v, v)
+        For c As Integer = k To n - 1
+            Dim dot As Double = 0.0
+            For r As Integer = k To m - 1
+                dot += v(r - k) * qr(r * n + c)
+            Next
+            For r As Integer = k To m - 1
+                qr(r * n + c) -= tau * v(r - k) * dot
+                Finite(qr(r * n + c))
+            Next
+        Next
+        Dim dotY As Double = 0.0
+        For r As Integer = k To m - 1
+            dotY += v(r - k) * y(r)
+        Next
+        For r As Integer = k To m - 1
+            y(r) -= tau * v(r - k) * dotY
+            Finite(y(r))
+        Next
+        qr(k * n + k) = -sign * length
+    Next
+    Dim x(n) As Double
+    For r As Integer = n - 1 To 0 Step -1
+        If Math.Abs(qr(r * n + r)) = 0.0 Or Math.Abs(qr(r * n + r)) / rankScale <= tolerance Then Return New LinearSolveResult("RankDeficient", Nil, -1.0)
+        Dim value As Double = y(r)
+        For c As Integer = r + 1 To n - 1
+            value -= qr(r * n + c) * x(c)
+        Next
+        x(r) = value / qr(r * n + r)
+        Finite(x(r))
+    Next
+    Return ResultFor(a, b, x)
+End Function

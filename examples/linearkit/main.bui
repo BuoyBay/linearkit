@@ -1,0 +1,16 @@
+Import linearkit
+Sub Main()
+    Dim a As New DenseMatrix(2, 2, [0.0, 1.0, 1.0, 0.0])
+    Dim b As New Vector([2.0, 3.0])
+    Dim solved As LinearSolveResult = Solve(a, b)
+    Print solved.Status
+    Print solved.Solution.At(0)
+    Print solved.Solution.At(1)
+    Print solved.ScaledResidual
+    Dim design As New DenseMatrix(3, 2, [1.0, 0.0, 1.0, 1.0, 1.0, 2.0])
+    Dim observations As New Vector([1.0, 2.0, 2.0])
+    Dim fit As LinearSolveResult = LeastSquares(design, observations)
+    Print fit.Status
+    Print fit.Solution.At(0)
+    Print fit.Solution.At(1)
+End Sub
