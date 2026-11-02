@@ -1,4 +1,4 @@
-# Dense vectors, matrices, linear-system solvers
+# Vectors, matrices, solvers
 
 Source-only finite Double vectors, dense matrices, and linear solves. Copy the sealed
 `packages/linearkit-0.1.0.buipkg` into a consumer's `packages/`, then `Import linearkit`.
