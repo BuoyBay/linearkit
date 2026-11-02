@@ -47,9 +47,3 @@ huge terms, and product rounding remain possible; this is not an exact dot produ
 or a correctly rounded numerical library. Cross uses the same compensated/scaled
 two-term dot products, allowing cancellation of overflowing individual products. Matrix
 products use the same dot policy. All operations leave operands unchanged.
-
-## Verification
-
-
-Maintainers run the private validation suite before release. See the repository README for public build instructions.
-

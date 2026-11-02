@@ -1,6 +1,6 @@
 # Dense vectors, matrices and linear-system solvers
 
-Pure Buoy finite Double vectors, dense matrices, and linear solves. Copy the sealed
+Source-only finite Double vectors, dense matrices, and linear solves. Copy the sealed
 `packages/linearkit-0.1.0.buipkg` into a consumer's `packages/`, then `Import linearkit`.
 No native dependencies. All numeric inputs and computed public outputs must be finite.
 
@@ -17,7 +17,7 @@ consumer project for reproducible installs.
 
 ## Example
 
-```buoy
+```basic
 Import linearkit
 Sub Main()
     Dim a As New DenseMatrix(2, 2, [0.0, 1.0, 1.0, 0.0])
@@ -56,7 +56,6 @@ On your own machine, install Buoy and run:
 buoy ai init --both
 ```
 
-The generated agent files and editor settings stay local and are ignored by Git.
 
 ## Contributing
 

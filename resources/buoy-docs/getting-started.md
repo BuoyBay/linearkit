@@ -18,10 +18,9 @@ Always inspect the returned `Status` before reading `Solution`: failed solves ha
 Nil solutions. A small backward residual does not establish small forward error
 for an ill-conditioned matrix. See [contracts](api.md) for tolerance and scaling.
 
-
 Save the following as `main.bui` in your consumer project. Package archives and any dependencies must be installed as described above.
 
-```buoy
+```basic
 Import linearkit
 Sub Main()
     Dim a As New DenseMatrix(2, 2, [0.0, 1.0, 1.0, 0.0])

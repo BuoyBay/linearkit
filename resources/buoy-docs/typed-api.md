@@ -345,8 +345,6 @@ Status is Success, Singular or RankDeficient. Failure has Nil Solution and resid
 
 Returns: no value.
 
-## LinearKit functions
-
 ### Solve
 
 `Public Function Solve(a As DenseMatrix, b As Vector, tolerance As Double = 0.000000000001) As LinearSolveResult`
